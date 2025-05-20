@@ -1,25 +1,24 @@
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.sql.*;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 
 public class FootballManagerGUI extends JFrame {
 
     private static final String DB_URL = "jdbc:sqlite:football_manager.db";
 
+    crearPanelEstadisticas panelEstadisticas = new crearPanelEstadisticas();
+
     // Components for Jugadores tab
-    private JTextField tfNombre, tfApellido, tfPosicion, tfEquipo;
+    private JTextField tfNombre, tfApellido, tfEquipo;
+    private JComboBox tfPosicion;
     private JTextField tfMedia, tfAtaque, tfHabilidad, tfMovimiento, tfPoder, tfMentalidad, tfDefensa, tfPorteria;
     private JTable tableJugadores;
     private DefaultTableModel modelJugadores;
 
+    String pos[] = {"POR","DFI", "DFC", "DFD", "MCD", "MI", "MD", "MC","MCO","MP","EI","DC","ED"};
+
     // Components for Estadísticas tab
-    private JComboBox<String> cbJugadores;
-    private JTable tableEstadisticas;
-    private DefaultTableModel modelEstadisticas;
-    private JTextField tfGoles, tfAsistencias, tfPlus80, tfPlus70, tfIntercepcion, tfAtajadas, tfPenalAtajado;
-    private JCheckBox cbJugadorPartido;
-    private JTextField tfEntradas50, tfPasesClave, tfPlus1xG, tfRecuperados;
 
     public FootballManagerGUI() {
         super("Football Manager");
@@ -33,7 +32,7 @@ public class FootballManagerGUI extends JFrame {
         // Create tab pane
         JTabbedPane tabPane = new JTabbedPane();
         tabPane.addTab("Jugadores", crearPanelJugadores());
-        tabPane.addTab("Estadísticas", crearPanelEstadisticas());
+        tabPane.addTab("Estadísticas", panelEstadisticas.crearPanelEstadisticas());
 
         add(tabPane);
     }
@@ -75,7 +74,7 @@ public class FootballManagerGUI extends JFrame {
         // Formulario
         JPanel form = new JPanel(new GridLayout(13, 2, 5, 5));
         tfNombre = new JTextField(); tfApellido = new JTextField();
-        tfPosicion = new JTextField(); tfEquipo = new JTextField();
+        tfPosicion = new JComboBox(pos); tfEquipo = new JTextField();
         tfMedia = new JTextField(); tfAtaque = new JTextField();
         tfHabilidad = new JTextField(); tfMovimiento = new JTextField();
         tfPoder = new JTextField(); tfMentalidad = new JTextField();
@@ -95,7 +94,7 @@ public class FootballManagerGUI extends JFrame {
         form.add(new JLabel("Portería:")); form.add(tfPorteria);
 
         JButton btnAgregarJ = new JButton("Agregar Jugador");
-        btnAgregarJ.addActionListener(e -> agregarJugador());
+        btnAgregarJ.addActionListener(_ -> agregarJugador());
         form.add(btnAgregarJ);
         form.add(new JLabel());
 
@@ -112,64 +111,13 @@ public class FootballManagerGUI extends JFrame {
         return panel;
     }
 
-    private JPanel crearPanelEstadisticas() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-
-        // Selector de jugador
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        cbJugadores = new JComboBox<>();
-        top.add(new JLabel("Jugador:")); top.add(cbJugadores);
-        JButton btnRefrescar = new JButton("Refrescar Lista");
-        btnRefrescar.addActionListener(e -> cargarComboJugadores());
-        top.add(btnRefrescar);
-        panel.add(top, BorderLayout.NORTH);
-
-        // Formulario de estadísticas
-        JPanel form = new JPanel(new GridLayout(8, 4, 5, 5));
-        tfGoles = new JTextField(); tfAsistencias = new JTextField(); tfPlus80 = new JTextField();
-        tfPlus70 = new JTextField(); tfIntercepcion = new JTextField(); tfAtajadas = new JTextField();
-        tfPenalAtajado = new JTextField(); cbJugadorPartido = new JCheckBox("Jugador del Partido");
-        tfEntradas50 = new JTextField(); tfPasesClave = new JTextField();
-        tfPlus1xG = new JTextField(); tfRecuperados = new JTextField();
-
-        form.add(new JLabel("Goles:")); form.add(tfGoles);
-        form.add(new JLabel("Asistencias:")); form.add(tfAsistencias);
-        form.add(new JLabel("+80:")); form.add(tfPlus80);
-        form.add(new JLabel("+70:")); form.add(tfPlus70);
-        form.add(new JLabel("Intercepción:")); form.add(tfIntercepcion);
-        form.add(new JLabel("Atajadas:")); form.add(tfAtajadas);
-        form.add(new JLabel("Penal Atajado:")); form.add(tfPenalAtajado);
-        form.add(cbJugadorPartido); form.add(new JLabel());
-        form.add(new JLabel("50%+ Entradas:")); form.add(tfEntradas50);
-        form.add(new JLabel("Pases Clave:")); form.add(tfPasesClave);
-        form.add(new JLabel("+1xG:")); form.add(tfPlus1xG);
-        form.add(new JLabel("Recuperados:")); form.add(tfRecuperados);
-
-        JButton btnAgregarE = new JButton("Agregar Estadísticas");
-        btnAgregarE.addActionListener(e -> agregarEstadisticas());
-        form.add(btnAgregarE); form.add(new JLabel());
-
-        panel.add(form, BorderLayout.CENTER);
-
-        // Tabla Estadísticas
-        modelEstadisticas = new DefaultTableModel();
-        String[] colsEst = {"ID","JugadorID","Goles","Asist","+80","+70","Inter","Ataj","PenalAt","JugPart","50Entr","PasesCl","+1xG","Recup"};
-        modelEstadisticas.setColumnIdentifiers(colsEst);
-        tableEstadisticas = new JTable(modelEstadisticas);
-        panel.add(new JScrollPane(tableEstadisticas), BorderLayout.SOUTH);
-
-        cargarComboJugadores();
-        cargarEstadisticas();
-        return panel;
-    }
-
     private void agregarJugador() {
         try (Connection conn = DriverManager.getConnection(DB_URL)) {
             String sql = "INSERT INTO Jugadores(nombre,apellido,posicion,equipo,media,ataque,habilidad,movimiento,poder,mentalidad,defensa,porteria) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)";
             PreparedStatement p = conn.prepareStatement(sql);
             p.setString(1, tfNombre.getText().trim());
             p.setString(2, tfApellido.getText().trim());
-            p.setString(3, tfPosicion.getText().trim());
+            p.setString(3, tfPosicion.getSelectedItem().toString().trim());
             p.setString(4, tfEquipo.getText().trim());
             p.setInt(5, Integer.parseInt(tfMedia.getText().trim()));
             p.setInt(6, Integer.parseInt(tfAtaque.getText().trim()));
@@ -182,39 +130,11 @@ public class FootballManagerGUI extends JFrame {
             p.executeUpdate();
             limpiarJugForm();
             cargarJugadores();
-            cargarComboJugadores();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Error al agregar jugador: " + e.getMessage());
         }
     }
 
-    private void agregarEstadisticas() {
-        try (Connection conn = DriverManager.getConnection(DB_URL)) {
-            int idx = cbJugadores.getSelectedIndex();
-            if(idx<0) return;
-            int jugadorId = Integer.parseInt(cbJugadores.getItemAt(idx).split(" - ")[0]);
-            String sql = "INSERT INTO Estadisticas(jugador_id,goles,asistencias,plus80,plus70,intercepcion,atajadas,penalAtajado,jugadorPartido,entradas50,pasesClave,plus1xG,recuperados) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)";
-            PreparedStatement p = conn.prepareStatement(sql);
-            p.setInt(1, jugadorId);
-            p.setInt(2, Integer.parseInt(tfGoles.getText().trim()));
-            p.setInt(3, Integer.parseInt(tfAsistencias.getText().trim()));
-            p.setInt(4, Integer.parseInt(tfPlus80.getText().trim()));
-            p.setInt(5, Integer.parseInt(tfPlus70.getText().trim()));
-            p.setInt(6, Integer.parseInt(tfIntercepcion.getText().trim()));
-            p.setInt(7, Integer.parseInt(tfAtajadas.getText().trim()));
-            p.setInt(8, Integer.parseInt(tfPenalAtajado.getText().trim()));
-            p.setInt(9, cbJugadorPartido.isSelected()?1:0);
-            p.setInt(10, Integer.parseInt(tfEntradas50.getText().trim()));
-            p.setInt(11, Integer.parseInt(tfPasesClave.getText().trim()));
-            p.setInt(12, Integer.parseInt(tfPlus1xG.getText().trim()));
-            p.setInt(13, Integer.parseInt(tfRecuperados.getText().trim()));
-            p.executeUpdate();
-            limpiarEstForm();
-            cargarEstadisticas();
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error al agregar estadísticas: " + e.getMessage());
-        }
-    }
 
     private void cargarJugadores() {
         modelJugadores.setRowCount(0);
@@ -234,49 +154,14 @@ public class FootballManagerGUI extends JFrame {
         }
     }
 
-    private void cargarComboJugadores() {
-        cbJugadores.removeAllItems();
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT id, nombre, posicion, equipo FROM Jugadores")) {
-            while (rs.next()) {
-                String item = rs.getInt("id") + " - " + rs.getString("nombre") + " (" + rs.getString("posicion") + ") [" + rs.getString("equipo") + "]";
-                cbJugadores.addItem(item);
-            }
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(this, "Error cargando lista de jugadores: " + e.getMessage());
-        }
-    }
-
-    private void cargarEstadisticas() {
-        modelEstadisticas.setRowCount(0);
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM Estadisticas")) {
-            while (rs.next()) {
-                modelEstadisticas.addRow(new Object[]{
-                        rs.getInt("id"), rs.getInt("jugador_id"), rs.getInt("goles"), rs.getInt("asistencias"),
-                        rs.getInt("plus80"), rs.getInt("plus70"), rs.getInt("intercepcion"), rs.getInt("atajadas"),
-                        rs.getInt("penalAtajado"), rs.getInt("jugadorPartido"), rs.getInt("entradas50"),
-                        rs.getInt("pasesClave"), rs.getInt("plus1xG"), rs.getInt("recuperados")
-                });
-            }
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(this, "Error cargando estadísticas: " + e.getMessage());
-        }
-    }
 
     private void limpiarJugForm() {
-        tfNombre.setText(""); tfApellido.setText(""); tfPosicion.setText(""); tfEquipo.setText("");
+        tfNombre.setText(""); tfApellido.setText(""); tfPosicion.setSelectedIndex(0); tfEquipo.setText("");
         tfMedia.setText(""); tfAtaque.setText(""); tfHabilidad.setText(""); tfMovimiento.setText("");
         tfPoder.setText(""); tfMentalidad.setText(""); tfDefensa.setText(""); tfPorteria.setText("");
     }
 
-    private void limpiarEstForm() {
-        tfGoles.setText(""); tfAsistencias.setText(""); tfPlus80.setText(""); tfPlus70.setText("");
-        tfIntercepcion.setText(""); tfAtajadas.setText(""); tfPenalAtajado.setText(""); cbJugadorPartido.setSelected(false);
-        tfEntradas50.setText(""); tfPasesClave.setText(""); tfPlus1xG.setText(""); tfRecuperados.setText("");
-    }
+    
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new FootballManagerGUI().setVisible(true));

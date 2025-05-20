@@ -37,10 +37,7 @@ public class SQLite {
 
                 String sql2 = "CREATE TABLE IF NOT EXISTS Estadisticas (" +
                         "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                        "nombre TEXT NOT NULL," +
-                        "apellido TEXT NOT NULL," +
-                        "posicion TEXT," +
-                        "equipo TEXT," +
+                        "jugador_id INTEGER NOT NULL"+
                         "goles INTEGER," +
                         "asistencias INTEGER," +
                         "plus80 INTEGER," + // +80
@@ -52,7 +49,8 @@ public class SQLite {
                         "cincuentaPorcientoEntradas INTEGER," + // 50%+ entradas
                         "pasesClave INTEGER," +
                         "plus1xG INTEGER," + // + 1xG
-                        "recuperados INTEGER" +
+                        "recuperados INTEGER," +
+                        "FOREIGN KEY(jugador_id) REFERENCES Jugadores(id)"+
                         ");";
 
                 stmt.execute(sql2);
