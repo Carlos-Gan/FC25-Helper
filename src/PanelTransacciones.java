@@ -110,7 +110,7 @@ public class PanelTransacciones extends JPanel {
         };
 
         // Listener del combo
-        comboTipoGrafica.addActionListener(e -> actualizarGraficas.run());
+        comboTipoGrafica.addActionListener(_ -> actualizarGraficas.run());
 
         // Inicial
         actualizarGraficas.run();
