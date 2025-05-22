@@ -1,17 +1,33 @@
 import com.toedter.calendar.JDateChooser;
 
+import models.BalanceData;
+import models.CompraData;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.labels.ItemLabelAnchor;
+import org.jfree.chart.labels.ItemLabelPosition;
+import org.jfree.chart.labels.StandardCategoryItemLabelGenerator;
+import org.jfree.chart.plot.CategoryPlot;
 import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.chart.ui.TextAnchor;
 import org.jfree.data.category.DefaultCategoryDataset;
 
 import java.awt.*;
 import java.sql.*;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Vector;
 
@@ -63,76 +79,162 @@ public class PanelTransacciones extends JPanel {
     }
 
     private JPanel crearPanelGraficas() {
-        JPanel panelGraficas = new JPanel(new GridLayout(2, 1));
+        JPanel panelPrincipal = new JPanel(new BorderLayout());
+        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        // Gráfica de ganancias por ventas
-        DefaultCategoryDataset datasetVentas = new DefaultCategoryDataset();
-        double[] ganancias = obtenerGananciasVentas();
-        String[] fechasVentas = obtenerFechasTransacciones("Venta");
+        // Combo con estilo moderno
+        String[] opciones = { "Barras", "Líneas" };
+        JComboBox<String> comboTipoGrafica = new JComboBox<>(opciones);
+        comboTipoGrafica.setSelectedIndex(0);
+        comboTipoGrafica.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        comboTipoGrafica.setBackground(new Color(240, 240, 240));
+        comboTipoGrafica.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
 
-        for (int i = 0; i < ganancias.length; i++) {
-            datasetVentas.addValue(ganancias[i], "Ganancias", fechasVentas[i]);
+        // Panel de gráficas
+        JPanel panelGraficas = new JPanel();
+        panelGraficas.setLayout(new BoxLayout(panelGraficas, BoxLayout.Y_AXIS));
+        panelGraficas.setBackground(Color.WHITE);
+
+        // Función para actualizar gráficos
+        Runnable actualizarGraficas = () -> {
+            panelGraficas.removeAll();
+            String tipo = (String) comboTipoGrafica.getSelectedItem();
+
+            panelGraficas.add(espaciadoSuperior(crearGraficoVentas(tipo)));
+            panelGraficas.add(espaciadoSuperior(crearGraficoCompras(tipo)));
+            panelGraficas.add(espaciadoSuperior(crearGraficoBalancePorFecha(tipo)));
+            panelGraficas.add(espaciadoSuperior(crearGraficoResumen(tipo)));
+
+            panelGraficas.revalidate();
+            panelGraficas.repaint();
+        };
+
+        // Listener del combo
+        comboTipoGrafica.addActionListener(e -> actualizarGraficas.run());
+
+        // Inicial
+        actualizarGraficas.run();
+
+        JScrollPane scroll = new JScrollPane(panelGraficas);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+
+        panelPrincipal.add(comboTipoGrafica, BorderLayout.NORTH);
+        panelPrincipal.add(scroll, BorderLayout.CENTER);
+
+        return panelPrincipal;
+    }
+
+    private Component espaciadoSuperior(JComponent grafico) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 0, 20, 0));
+        panel.setBackground(Color.WHITE);
+        panel.add(grafico, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void configurarGrafico(JFreeChart chart) {
+        CategoryPlot plot = chart.getCategoryPlot();
+        plot.setBackgroundPaint(new Color(245, 245, 245));
+        plot.setOutlineVisible(false);
+        plot.setRangeGridlinePaint(new Color(200, 200, 200));
+
+        NumberAxis axis = (NumberAxis) chart.getCategoryPlot().getRangeAxis();
+        axis.setStandardTickUnits(NumberAxis.createStandardTickUnits());
+        axis.setNumberFormatOverride(NumberFormat.getCurrencyInstance(Locale.GERMANY));
+
+        if (plot.getRenderer() instanceof BarRenderer renderer) {
+            renderer.setDefaultItemLabelsVisible(true);
+            renderer.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator());
+            renderer.setDefaultPositiveItemLabelPosition(
+                    new ItemLabelPosition(ItemLabelAnchor.OUTSIDE12, TextAnchor.BASELINE_CENTER));
+            renderer.setSeriesPaint(0, new Color(72, 133, 237)); // Azul moderno
+            if (plot.getDataset().getRowCount() > 1)
+                renderer.setSeriesPaint(1, new Color(219, 68, 55)); // Rojo moderno
+        }
+    }
+
+    private ChartPanel crearGraficoResumen(String tipo) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        Map<String, Double> resumen = obtenerResumenFinanciero();
+
+        dataset.addValue(resumen.getOrDefault("total_ingresos", 0.0), "Ingresos", "Total");
+        dataset.addValue(resumen.getOrDefault("total_gastos", 0.0), "Gastos", "Total");
+        dataset.addValue(resumen.getOrDefault("balance_neto", 0.0), "Balance Neto", "Total");
+
+        JFreeChart chart = crearGrafico("Resumen Financiero Total", "", "Cantidad (€)", dataset, tipo);
+        return new ChartPanel(chart);
+    }
+
+    private ChartPanel crearGraficoBalancePorFecha(String tipo) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        List<BalanceData> datos = obtenerDatosBalance();
+
+        for (BalanceData dato : datos) {
+            double balanceNeto = dato.ganancia - dato.costo;
+            dataset.addValue(balanceNeto, "Balance Neto", dato.fecha);
         }
 
-        JFreeChart chartVentas = ChartFactory.createBarChart(
-                "Ganancias por Ventas",
-                "Fecha",
-                "Ganancia (€)",
-                datasetVentas,
-                PlotOrientation.VERTICAL,
-                true, true, false);
+        JFreeChart chart = crearGrafico("Balance Neto por Fecha", "Fecha", "Balance (€)", dataset, tipo);
+        return new ChartPanel(chart);
+    }
 
-        ChartPanel chartPanelVentas = new ChartPanel(chartVentas);
-        chartPanelVentas.setPreferredSize(new Dimension(600, 300));
+    private ChartPanel crearGraficoCompras(String tipo) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        List<CompraData> compras = obtenerDatosCompras();
 
-        // Gráfica de costos por compras
-        DefaultCategoryDataset datasetCompras = new DefaultCategoryDataset();
-        double[] costos = obtenerCostosCompras();
-        String[] fechasCompras = obtenerFechasTransacciones("Compra");
-
-        for (int i = 0; i < costos.length; i++) {
-            datasetCompras.addValue(costos[i], "Costos", fechasCompras[i]);
+        for (CompraData compra : compras) {
+            dataset.addValue(compra.costo, compra.jugador, compra.fecha);
         }
 
-        JFreeChart chartCompras = ChartFactory.createBarChart(
-                "Costos por Compras",
-                "Fecha",
-                "Costo (€)",
-                datasetCompras,
-                PlotOrientation.VERTICAL,
-                true, true, false);
+        JFreeChart chart = crearGrafico("Costos por Compras", "Fecha", "Costo (€)", dataset, tipo);
+        return new ChartPanel(chart);
+    }
 
-        ChartPanel chartPanelCompras = new ChartPanel(chartCompras);
-        chartPanelCompras.setPreferredSize(new Dimension(600, 300));
+    private ChartPanel crearGraficoVentas(String tipo) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
 
-        // Panel de resumen financiero
-        JPanel panelResumen = new JPanel(new GridLayout(1, 2));
-        panelResumen.add(chartPanelVentas);
-        panelResumen.add(chartPanelCompras);
+        String sql = """
+                SELECT t.fecha, SUM(t.ganancia_costo) AS ganancia
+                FROM Transacciones t
+                WHERE t.tipo = 'Venta'
+                GROUP BY t.fecha
+                ORDER BY t.fecha
+                """;
 
-        // Gráfica de balance acumulado
-        DefaultCategoryDataset datasetBalance = new DefaultCategoryDataset();
-        java.util.Map<String, Double> resumen = obtenerResumenFinanciero();
+        try (var conn = DriverManager.getConnection(DB_URL);
+                var stmt = conn.prepareStatement(sql);
+                var rs = stmt.executeQuery()) {
 
-        datasetBalance.addValue(resumen.getOrDefault("total_ingresos", 0.0), "Ingresos", "Total");
-        datasetBalance.addValue(resumen.getOrDefault("total_gastos", 0.0), "Gastos", "Total");
-        datasetBalance.addValue(resumen.getOrDefault("balance_neto", 0.0), "Balance Neto", "Total");
+            while (rs.next()) {
+                String fecha = rs.getString("fecha");
+                double ganancia = rs.getDouble("ganancia");
+                dataset.addValue(ganancia, "Ganancias", fecha);
+            }
 
-        JFreeChart chartBalance = ChartFactory.createBarChart(
-                "Resumen Financiero",
-                "",
-                "Cantidad (€)",
-                datasetBalance,
-                PlotOrientation.VERTICAL,
-                true, true, false);
+        } catch (SQLException e) {
+            mostrarError("Error al cargar datos de ganancias: " + e.getMessage());
+        }
 
-        ChartPanel chartPanelBalance = new ChartPanel(chartBalance);
-        chartPanelBalance.setPreferredSize(new Dimension(600, 300));
+        JFreeChart chart = crearGrafico("Ganancias por Ventas", "Fecha", "Ganancia (€)", dataset, tipo);
+        return new ChartPanel(chart);
+    }
 
-        panelGraficas.add(panelResumen);
-        panelGraficas.add(chartPanelBalance);
-
-        return panelGraficas;
+    private JFreeChart crearGrafico(String titulo, String categoria, String valorY, DefaultCategoryDataset dataset,
+            String tipo) {
+        if (tipo.equals("Líneas")) {
+            JFreeChart chart = ChartFactory.createLineChart(
+                    titulo, categoria, valorY, dataset,
+                    PlotOrientation.VERTICAL, true, true, false);
+            configurarGrafico(chart);
+            return chart;
+        } else {
+            JFreeChart chart = ChartFactory.createBarChart(
+                    titulo, categoria, valorY, dataset,
+                    PlotOrientation.VERTICAL, true, true, false);
+            configurarGrafico(chart);
+            return chart;
+        }
     }
 
     private JPanel crearFormulario() {
@@ -326,8 +428,7 @@ public class PanelTransacciones extends JPanel {
         String precioStr = tfPrecio.getText().trim();
 
         if (precioStr.isEmpty()) {
-            lblValorGananciaCosto.setText("€0.00");
-            lblValorGananciaCosto.setForeground(PRIMARY_COLOR);
+            mostrarGananciaCosto(0.0, PRIMARY_COLOR);
             return;
         }
 
@@ -335,20 +436,23 @@ public class PanelTransacciones extends JPanel {
             double precio = Double.parseDouble(precioStr);
 
             if ("Compra".equals(tipo)) {
-                // Para compra, mostrar el costo total (precio de compra)
-                lblValorGananciaCosto.setText(String.format("€%.2f", precio));
-                lblValorGananciaCosto.setForeground(Color.RED);
+                // Muestra el costo de compra como valor negativo (opcional)
+                mostrarGananciaCosto(precio, Color.RED);
             } else {
-                // Para venta, calcular ganancia (precio venta - valor mercado)
+                // Para venta: ganancia = precio venta - valor mercado
                 double valorMercado = obtenerValorMercadoJugadorSeleccionado();
                 double ganancia = precio - valorMercado;
-                lblValorGananciaCosto.setText(String.format("€%.2f", ganancia));
-                lblValorGananciaCosto.setForeground(ganancia >= 0 ? new Color(0, 150, 0) : Color.RED);
+                Color color = ganancia >= 0 ? new Color(0, 150, 0) : Color.RED;
+                mostrarGananciaCosto(ganancia, color);
             }
         } catch (NumberFormatException e) {
-            lblValorGananciaCosto.setText("€0.00");
-            lblValorGananciaCosto.setForeground(PRIMARY_COLOR);
+            mostrarGananciaCosto(0.0, PRIMARY_COLOR);
         }
+    }
+
+    private void mostrarGananciaCosto(double valor, Color color) {
+        lblValorGananciaCosto.setText("€" + formatearValorDecimal(valor));
+        lblValorGananciaCosto.setForeground(color);
     }
 
     private double obtenerValorMercadoJugador(Connection conn, int jugadorId) throws SQLException {
@@ -615,6 +719,9 @@ public class PanelTransacciones extends JPanel {
 
     private void cargarTransacciones() {
         modeloTransacciones.setRowCount(0);
+
+        NumberFormat formatoMoneda = NumberFormat.getCurrencyInstance(Locale.GERMANY);
+
         var sql = """
                 SELECT t.id, t.tipo, j.nombre, t.equipo_origen, t.equipo_destino, t.precio,
                        COALESCE(t.valor_mercado, j.valor_mercado) as valor_mercado,
@@ -639,9 +746,14 @@ public class PanelTransacciones extends JPanel {
                 fila.add(rs.getString("nombre"));
                 fila.add(rs.getString("equipo_origen"));
                 fila.add(rs.getString("equipo_destino"));
-                fila.add(rs.getDouble("precio"));
-                fila.add(rs.getDouble("valor_mercado"));
-                fila.add(rs.getDouble("ganancia_costo"));
+                float precio = rs.getFloat("precio");
+                float valorMercado = rs.getFloat("valor_mercado");
+                float gananciaCosto = rs.getFloat("ganancia_costo");
+
+                fila.add(formatoMoneda.format(precio));
+                fila.add(formatoMoneda.format(valorMercado));
+                fila.add(formatoMoneda.format(gananciaCosto));
+
                 fila.add(rs.getString("fecha"));
 
                 modeloTransacciones.addRow(fila);
@@ -709,17 +821,17 @@ public class PanelTransacciones extends JPanel {
         }
     }
 
-    // Método para obtener datos de ganancias para gráficas
     public double[] obtenerGananciasVentas() {
-        var sql = "SELECT ganancia_costo FROM Transacciones WHERE tipo = 'Venta' ORDER BY fecha";
-        var ganancias = new java.util.ArrayList<Double>();
+        String sql = "SELECT ganancia_costo FROM Transacciones WHERE tipo = 'Venta' ORDER BY fecha";
+        ArrayList<Double> ganancias = new ArrayList<>();
 
-        try (var conn = DriverManager.getConnection(DB_URL);
-                var stmt = conn.prepareStatement(sql);
-                var rs = stmt.executeQuery()) {
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                ganancias.add(rs.getDouble("ganancia_costo"));
+                double valor = rs.getDouble("ganancia_costo");
+                ganancias.add(formatearValorDecimal(valor));
             }
         } catch (SQLException e) {
             mostrarError("Error al obtener ganancias: " + e.getMessage());
@@ -731,21 +843,50 @@ public class PanelTransacciones extends JPanel {
 
     // Método para obtener datos de costos para gráficas
     public double[] obtenerCostosCompras() {
-        var sql = "SELECT ganancia_costo FROM Transacciones WHERE tipo = 'Compra' ORDER BY fecha";
-        var costos = new java.util.ArrayList<Double>();
+        String sql = "SELECT ganancia_costo FROM Transacciones WHERE tipo = 'Compra' ORDER BY fecha";
+        ArrayList<Double> costos = new ArrayList<>();
 
-        try (var conn = DriverManager.getConnection(DB_URL);
-                var stmt = conn.prepareStatement(sql);
-                var rs = stmt.executeQuery()) {
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                costos.add(rs.getDouble("ganancia_costo"));
+                double valor = rs.getDouble("ganancia_costo");
+                costos.add(formatearValorDecimal(valor));
             }
         } catch (SQLException e) {
             mostrarError("Error al obtener costos: " + e.getMessage());
         }
 
         return costos.isEmpty() ? new double[] { 0.0 } : costos.stream().mapToDouble(Double::doubleValue).toArray();
+    }
+
+    public List<CompraData> obtenerDatosCompras() {
+        var sql = """
+                SELECT j.nombre AS jugador, t.ganancia_costo AS costo, t.fecha
+                FROM Transacciones t
+                JOIN Jugadores j ON t.jugador_id = j.id
+                WHERE t.tipo = 'Compra'
+                ORDER BY t.fecha
+                """;
+
+        var lista = new ArrayList<CompraData>();
+        try (var conn = DriverManager.getConnection(DB_URL);
+                var stmt = conn.prepareStatement(sql);
+                var rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                var jugador = rs.getString("jugador");
+                var costo = rs.getDouble("costo");
+                var fecha = rs.getString("fecha");
+                lista.add(new CompraData(jugador, costo, fecha));
+            }
+
+        } catch (SQLException e) {
+            mostrarError("Error al obtener datos de compras: " + e.getMessage());
+        }
+
+        return lista;
     }
 
     public String[] obtenerFechasTransacciones(String tipo) {
@@ -766,6 +907,11 @@ public class PanelTransacciones extends JPanel {
         }
 
         return fechas.isEmpty() ? new String[] { "No hay datos" } : fechas.toArray(new String[0]);
+    }
+
+    private double formatearValorDecimal(double valor) {
+        DecimalFormat formato = new DecimalFormat("#.##");
+        return Double.parseDouble(formato.format(valor).replace(",", "."));
     }
 
     // Método para obtener resumen financiero
@@ -801,7 +947,36 @@ public class PanelTransacciones extends JPanel {
         return resumen;
     }
 
+    public List<BalanceData> obtenerDatosBalance() {
+        String sql = """
+                SELECT t.fecha,
+                       SUM(CASE WHEN t.tipo = 'Venta' THEN t.ganancia_costo ELSE 0 END) AS ganancia,
+                       SUM(CASE WHEN t.tipo = 'Compra' THEN t.ganancia_costo ELSE 0 END) AS costo
+                FROM Transacciones t
+                GROUP BY t.fecha
+                ORDER BY t.fecha
+                """;
+
+        List<BalanceData> lista = new ArrayList<>();
+        try (var conn = DriverManager.getConnection(DB_URL);
+                var stmt = conn.prepareStatement(sql);
+                var rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                String fecha = rs.getString("fecha");
+                double ganancia = rs.getDouble("ganancia");
+                double costo = rs.getDouble("costo");
+                lista.add(new BalanceData(fecha, ganancia, costo));
+            }
+
+        } catch (SQLException e) {
+            mostrarError("Error al obtener datos de balance: " + e.getMessage());
+        }
+        return lista;
+    }
+
     private void mostrarError(String mensaje) {
         JOptionPane.showMessageDialog(this, mensaje, "Error", JOptionPane.ERROR_MESSAGE);
     }
+
 }
