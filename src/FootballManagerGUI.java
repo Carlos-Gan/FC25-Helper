@@ -79,7 +79,8 @@ public class FootballManagerGUI extends JFrame {
         tabPane.addTab("Jugadores", crearPanelJugadores());
         tabPane.addTab("Estadísticas", new PanelEstadisticas());
         tabPane.addTab("Ventas o Compras", new PanelTransacciones());
-        
+        tabPane.addTab("Calculadora", new PanelCalculadora());
+
         add(tabPane);
     }
 
